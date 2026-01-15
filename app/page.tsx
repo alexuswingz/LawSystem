@@ -258,10 +258,16 @@ export default function Home() {
         isLoading={isLoadingConversations}
       />
 
-      <main className="flex flex-col h-screen h-[100dvh] max-w-2xl mx-auto">
-        <Header onMenuClick={() => setSidebarOpen(true)} />
+      {/* Fixed Header */}
+      <div className="fixed top-0 left-0 right-0 z-30">
+        <div className="max-w-2xl mx-auto">
+          <Header onMenuClick={() => setSidebarOpen(true)} />
+        </div>
+      </div>
 
-        <div className="flex-1 overflow-hidden flex flex-col">
+      {/* Main Content Area - with padding for fixed header and input */}
+      <main className="flex flex-col min-h-screen min-h-[100dvh] max-w-2xl mx-auto pt-[120px] pb-[140px]">
+        <div className="flex-1 flex flex-col">
           {messages.length === 0 ? (
             <WelcomeScreen onSuggestionClick={handleSuggestionClick} />
           ) : (
@@ -272,9 +278,11 @@ export default function Home() {
             />
           )}
         </div>
+      </main>
 
-        {/* Input Area */}
-        <div className="p-4 safe-bottom">
+      {/* Fixed Input Area */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 bg-black/90 backdrop-blur-lg border-t border-white/5">
+        <div className="max-w-2xl mx-auto p-4 safe-bottom">
           <form onSubmit={handleSubmit} className="relative">
             <div className="surface rounded-2xl p-2 flex items-end gap-2">
               <textarea
@@ -308,7 +316,7 @@ export default function Home() {
             advice, please consult a licensed attorney.
           </p>
         </div>
-      </main>
+      </div>
     </>
   );
 }

@@ -8,7 +8,7 @@ interface HeaderProps {
 
 export function Header({ onMenuClick }: HeaderProps) {
   return (
-    <header className="glass safe-top sticky top-0 z-30">
+    <header className="glass safe-top">
       <div className="flex items-center justify-between px-4 py-4">
         {/* Menu Button */}
         <button
