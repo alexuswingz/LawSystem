@@ -42,15 +42,29 @@ export async function initializeDatabase() {
       ON conversations(user_id)
     `);
 
-    // Create messages table
+    // Create messages table with image support
     await client.query(`
       CREATE TABLE IF NOT EXISTS messages (
         id SERIAL PRIMARY KEY,
         conversation_id INTEGER REFERENCES conversations(id) ON DELETE CASCADE,
         role VARCHAR(20) NOT NULL,
         content TEXT NOT NULL,
+        image_url TEXT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+
+    // Add image_url column if it doesn't exist (for existing tables)
+    await client.query(`
+      DO $$ 
+      BEGIN 
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'messages' AND column_name = 'image_url'
+        ) THEN 
+          ALTER TABLE messages ADD COLUMN image_url TEXT;
+        END IF;
+      END $$;
     `);
 
     // Create index for faster message retrieval
@@ -110,12 +124,13 @@ export async function deleteConversation(id: number) {
 export async function addMessage(
   conversationId: number,
   role: "user" | "assistant",
-  content: string
+  content: string,
+  imageUrl?: string
 ) {
-  // Add message
+  // Add message with optional image
   const result = await pool.query(
-    "INSERT INTO messages (conversation_id, role, content) VALUES ($1, $2, $3) RETURNING *",
-    [conversationId, role, content]
+    "INSERT INTO messages (conversation_id, role, content, image_url) VALUES ($1, $2, $3, $4) RETURNING *",
+    [conversationId, role, content, imageUrl || null]
   );
 
   // Update conversation's updated_at timestamp

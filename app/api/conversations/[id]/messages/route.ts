@@ -26,11 +26,11 @@ export async function POST(
 ) {
   try {
     const conversationId = parseInt(params.id);
-    const { userMessage, assistantMessage } = await request.json();
+    const { userMessage, assistantMessage, userImage } = await request.json();
 
-    // Save user message
-    if (userMessage) {
-      await addMessage(conversationId, "user", userMessage);
+    // Save user message with optional image
+    if (userMessage || userImage) {
+      await addMessage(conversationId, "user", userMessage || "", userImage);
     }
 
     // Save assistant message

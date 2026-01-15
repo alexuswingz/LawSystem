@@ -5,14 +5,16 @@ import { Header } from "@/components/Header";
 import { ChatInterface } from "@/components/ChatInterface";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { Sidebar, Conversation } from "@/components/Sidebar";
-import { Send } from "lucide-react";
+import { Send, ImagePlus, X } from "lucide-react";
 import { getUserId } from "@/lib/user";
+import Image from "next/image";
 
 export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  image?: string; // Base64 image data
 }
 
 export default function Home() {
@@ -24,8 +26,10 @@ export default function Home() {
   const [currentConversationId, setCurrentConversationId] = useState<number | null>(null);
   const [isLoadingConversations, setIsLoadingConversations] = useState(true);
   const [userId, setUserId] = useState<string>("");
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -91,11 +95,12 @@ export default function Home() {
       if (response.ok) {
         const data = await response.json();
         setMessages(
-          data.map((msg: { id: number; role: string; content: string; created_at: string }) => ({
+          data.map((msg: { id: number; role: string; content: string; created_at: string; image_url?: string }) => ({
             id: msg.id.toString(),
             role: msg.role as "user" | "assistant",
             content: msg.content,
             timestamp: new Date(msg.created_at),
+            image: msg.image_url || undefined,
           }))
         );
       }
@@ -127,19 +132,49 @@ export default function Home() {
     }
   };
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Check file size (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        alert("Image size must be less than 10MB");
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelectedImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeSelectedImage = () => {
+    setSelectedImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && !selectedImage) || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: input.trim(),
+      content: input.trim() || (selectedImage ? "Please analyze this document/image." : ""),
       timestamp: new Date(),
+      image: selectedImage || undefined,
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    const imageToSend = selectedImage;
+    setSelectedImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
     setIsLoading(true);
 
     // Reset textarea height
@@ -151,12 +186,15 @@ export default function Home() {
       // Create conversation if this is the first message
       let conversationId = currentConversationId;
       if (!conversationId && userId) {
+        const title = userMessage.content 
+          ? userMessage.content.slice(0, 50) + (userMessage.content.length > 50 ? "..." : "")
+          : "Document Analysis";
         const createResponse = await fetch("/api/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ 
             userId: userId,
-            title: userMessage.content.slice(0, 50) + (userMessage.content.length > 50 ? "..." : "") 
+            title: title
           }),
         });
         if (createResponse.ok) {
@@ -176,6 +214,7 @@ export default function Home() {
         body: JSON.stringify({
           message: userMessage.content,
           conversationId: conversationId,
+          image: imageToSend,
         }),
       });
 
@@ -222,6 +261,7 @@ export default function Home() {
           body: JSON.stringify({
             userMessage: userMessage.content,
             assistantMessage: fullContent,
+            userImage: imageToSend,
           }),
         });
       }
@@ -266,7 +306,7 @@ export default function Home() {
       </div>
 
       {/* Main Content Area - with padding for fixed header and input */}
-      <main className="flex flex-col min-h-screen min-h-[100dvh] max-w-2xl mx-auto pt-[120px] pb-[140px]">
+      <main className="flex flex-col min-h-screen min-h-[100dvh] max-w-2xl mx-auto pt-[120px] pb-[100px]">
         <div className="flex-1 flex flex-col">
           {messages.length === 0 ? (
             <WelcomeScreen onSuggestionClick={handleSuggestionClick} />
@@ -281,10 +321,49 @@ export default function Home() {
       </main>
 
       {/* Fixed Input Area */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 bg-black/90 backdrop-blur-lg border-t border-white/5">
-        <div className="max-w-2xl mx-auto p-4 safe-bottom">
-          <form onSubmit={handleSubmit} className="relative">
-            <div className="surface rounded-2xl p-2 flex items-end gap-2">
+      <div className="fixed bottom-0 left-0 right-0 z-30 bg-black/95 backdrop-blur-lg border-t border-white/5">
+        <div className="max-w-2xl mx-auto px-3 pt-2 pb-3 safe-bottom">
+          {/* Image Preview */}
+          {selectedImage && (
+            <div className="mb-2 relative inline-block">
+              <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-white/10">
+                <Image
+                  src={selectedImage}
+                  alt="Selected"
+                  fill
+                  className="object-cover"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={removeSelectedImage}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center hover:bg-red-600 transition-colors"
+              >
+                <X className="w-3 h-3 text-white" />
+              </button>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit}>
+            <div className="surface rounded-xl p-1.5 flex items-end gap-1">
+              {/* Image Upload Button */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageSelect}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading}
+                className="p-2 rounded-lg hover:bg-white/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+                title="Upload image"
+              >
+                <ImagePlus className="w-5 h-5 text-gray-500" />
+              </button>
+
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -295,15 +374,15 @@ export default function Home() {
                     handleSubmit(e);
                   }
                 }}
-                placeholder="Ask about Philippine Law..."
-                className="flex-1 bg-transparent text-white placeholder-gray-600 resize-none px-3 py-2.5 focus:outline-none text-sm leading-relaxed"
+                placeholder={selectedImage ? "Describe this image..." : "Ask about Philippine Law..."}
+                className="flex-1 bg-transparent text-white placeholder-gray-600 resize-none px-2 py-2 focus:outline-none text-sm leading-snug"
                 rows={1}
                 disabled={isLoading}
               />
               <button
                 type="submit"
-                disabled={!input.trim() || isLoading}
-                className="btn-primary disabled:opacity-30 disabled:cursor-not-allowed text-white p-2.5 rounded-xl transition-all duration-200 flex-shrink-0 active:scale-95"
+                disabled={(!input.trim() && !selectedImage) || isLoading}
+                className="btn-primary disabled:opacity-30 disabled:cursor-not-allowed text-white p-2 rounded-lg transition-all duration-200 flex-shrink-0 active:scale-95"
               >
                 <Send className="w-4 h-4" />
               </button>
@@ -311,9 +390,8 @@ export default function Home() {
           </form>
 
           {/* Disclaimer */}
-          <p className="text-center text-[10px] text-gray-600 mt-3 px-4">
-            Alexus provides general legal information only. For specific legal
-            advice, please consult a licensed attorney.
+          <p className="text-center text-[9px] text-gray-600 mt-2">
+            For specific legal advice, consult a licensed attorney.
           </p>
         </div>
       </div>

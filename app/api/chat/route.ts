@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { getRecentMessages, addMessage } from "@/lib/db";
+import { getRecentMessages } from "@/lib/db";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -32,6 +32,16 @@ const SYSTEM_PROMPT = `You are Alexus, a knowledgeable and professional AI legal
 7. Acknowledge when a topic is outside your expertise or when laws may have changed
 8. Provide balanced perspectives when legal matters have multiple interpretations
 
+## Document/Image Analysis:
+- When users share images of legal documents, contracts, court papers, or other legal materials:
+  - Carefully read and analyze the content
+  - Identify the type of document (contract, court order, affidavit, etc.)
+  - Highlight important clauses, dates, parties involved
+  - Explain legal implications and potential issues
+  - Point out any red flags or concerns
+  - Suggest next steps or actions if applicable
+- Always remind users that document review is for informational purposes only
+
 ## Memory & Context:
 - You have access to the conversation history with this user
 - Remember details they've shared about their case or situation
@@ -51,12 +61,13 @@ const SYSTEM_PROMPT = `You are Alexus, a knowledgeable and professional AI legal
 - Laws and regulations may have been updated; users should verify current laws
 - For specific cases, always recommend consulting a licensed Philippine attorney
 - Court decisions and legal interpretations can vary
+- Document analysis is for informational purposes and does not constitute legal review
 
 Remember: You are helping Filipinos understand their rights and legal options. Be helpful, accurate, and compassionate.`;
 
 export async function POST(request: Request) {
   try {
-    const { message, conversationId } = await request.json();
+    const { message, conversationId, image } = await request.json();
 
     // Get conversation history for context (memory)
     let conversationHistory: { role: "user" | "assistant"; content: string }[] = [];
@@ -75,18 +86,50 @@ export async function POST(request: Request) {
     }
 
     // Build messages array with history and current message
-    const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
+    type MessageContent = string | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string; detail: "high" | "low" | "auto" } }>;
+    
+    const messages: Array<{ role: "system" | "user" | "assistant"; content: MessageContent }> = [
       { role: "system", content: SYSTEM_PROMPT },
-      ...conversationHistory,
-      { role: "user", content: message },
+      ...conversationHistory.map(msg => ({ 
+        role: msg.role as "user" | "assistant", 
+        content: msg.content 
+      })),
     ];
 
+    // Add current message with image if present
+    if (image) {
+      // Message with image - use vision capabilities
+      messages.push({
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: message || "Please analyze this document or image and provide relevant legal information based on Philippine law.",
+          },
+          {
+            type: "image_url",
+            image_url: {
+              url: image,
+              detail: "high",
+            },
+          },
+        ],
+      });
+    } else {
+      // Text-only message
+      messages.push({
+        role: "user",
+        content: message,
+      });
+    }
+
+    // Use gpt-4o for vision capabilities (gpt-4o-mini also supports vision)
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: messages,
+      messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
       stream: true,
       temperature: 0.7,
-      max_tokens: 2000,
+      max_tokens: 4000,
     });
 
     const encoder = new TextEncoder();
